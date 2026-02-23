@@ -65,11 +65,6 @@ class CognitoService:
                 {'Name': 'family_name', 'Value': last_name}
             ]
             
-            if country_code:
-                user_attributes.append({'Name': 'custom:country_code', 'Value': country_code})
-            if contact_number:
-                user_attributes.append({'Name': 'custom:contact_number', 'Value': contact_number})
-            
             response = self.client.sign_up(
                 ClientId=self.app_client_id,
                 Username=email,
