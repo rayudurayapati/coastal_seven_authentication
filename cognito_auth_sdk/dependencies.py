@@ -7,12 +7,15 @@ Developers use token_data.sub and token_data.email to look up their own DB.
 """
 import logging
 from fastapi import Depends, HTTPException, status, Request
+from fastapi.security import HTTPBearer
 
 from cognito_auth_sdk.cognito import get_cognito_verifier, CognitoJWTVerifier
 from cognito_auth_sdk.schemas import TokenData
 
 logger = logging.getLogger(__name__)
 
+# This dummy bearer is purely to force Swagger UI to show the "Authorize" button
+oauth2_scheme = HTTPBearer(auto_error=False)
 
 def extract_token_from_request(request: Request) -> str:
     """
@@ -43,9 +46,12 @@ def extract_token_from_request(request: Request) -> str:
     )
 
 
+from fastapi.security import HTTPAuthorizationCredentials
+
 def get_current_user(
     request: Request,
-    verifier: CognitoJWTVerifier = Depends(get_cognito_verifier)
+    verifier: CognitoJWTVerifier = Depends(get_cognito_verifier),
+    token_auth: HTTPAuthorizationCredentials = Depends(oauth2_scheme)
 ) -> TokenData:
     """
     Verify JWT token and return Cognito claims (TokenData).
@@ -58,7 +64,9 @@ def get_current_user(
             user = db.query(User).filter(User.cognito_sub == str(token_data.sub)).first()
             ...
     """
-    token = extract_token_from_request(request)
+    # Use the token extracted by FastAPI's HTTPBearer if available
+    # Otherwise fallback to manual extraction (for cookies)
+    token = token_auth.credentials if token_auth else extract_token_from_request(request)
     token_data: TokenData = verifier.verify_token(token)
     return token_data
 
