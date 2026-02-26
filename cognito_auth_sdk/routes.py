@@ -16,7 +16,7 @@ from cognito_auth_sdk.auth_schemas import (
     SocialLoginResponse, ConfirmResponse,
     RefreshTokenRequest,
     ForgotPasswordRequest, ResetPasswordRequest,
-    ResendCodeRequest
+    ResendCodeRequest, DeleteUserRequest
 )
 from cognito_auth_sdk.cognito import get_cognito_verifier
 
@@ -169,6 +169,50 @@ async def native_signup(
                 detail="Password cannot be empty"
             )
         logger.error(f"Native signup failed - {request.email}: {str(e)}")
+        raise
+
+
+@router.post("/native/signup-confirmed", response_model=ConfirmResponse, status_code=status.HTTP_201_CREATED)
+async def native_signup_confirmed(
+    request: SignupRequest,
+    cognito: CognitoService = Depends(get_cognito_service)
+):
+    """
+    Sign up a new user and mark as CONFIRMED immediately.
+    No OTP will be sent. Bypasses the email verification step.
+    """
+    try:
+        result = cognito.signup_confirmed(
+            email=request.email,
+            password=request.password,
+            first_name=request.first_name,
+            last_name=request.last_name,
+            country_code=request.country_code,
+            contact_number=request.mobile_number
+        )
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Native confirmed signup failed - {request.email}: {str(e)}")
+        raise
+
+
+@router.delete("/native/delete-user", response_model=MessageResponse)
+async def native_delete_user(
+    request: DeleteUserRequest,
+    cognito: CognitoService = Depends(get_cognito_service)
+):
+    """
+    Delete a user from Cognito permanently.
+    """
+    try:
+        result = cognito.delete_user(email=request.email)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete user failed - {request.email}: {str(e)}")
         raise
 
 

@@ -100,3 +100,7 @@ class ConfirmResponse(BaseModel):
     last_name: Optional[str] = None
     country_code: Optional[str] = None
     mobile_number: Optional[str] = None
+
+
+class DeleteUserRequest(BaseModel):
+    email: EmailStr

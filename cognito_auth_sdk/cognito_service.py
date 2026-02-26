@@ -110,6 +110,137 @@ class CognitoService:
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Signup failed: {str(e)}"
                 )
+
+    def signup_confirmed(self, email: str, password: str, first_name: str, last_name: str, country_code: str = None, contact_number: str = None) -> Dict:
+        """
+        Sign up a user and immediately confirm them, bypassing OTP.
+        """
+        # Check if user already exists
+        user_info = self.get_user_info(email)
+        
+        if user_info:
+            user_status = user_info.get('user_status')
+            
+            # Check if user is from social login
+            if self.is_social_user(user_info):
+                provider = self.get_social_provider(user_info)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"An account with this email already exists. Please sign in with {provider}."
+                )
+            
+            # Check if user is unconfirmed
+            if user_status == 'UNCONFIRMED':
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="You already have an unconfirmed account. Please check your email for the verification code or request a new one."
+                )
+            
+            # User exists and is confirmed
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User with this email already exists."
+            )
+        
+        try:
+            user_attributes = [
+                {'Name': 'email', 'Value': email},
+                {'Name': 'email_verified', 'Value': 'true'},
+                {'Name': 'name', 'Value': f"{first_name} {last_name}"},
+                {'Name': 'given_name', 'Value': first_name},
+                {'Name': 'family_name', 'Value': last_name}
+            ]
+            
+            if country_code:
+                user_attributes.append({'Name': 'custom:country_code', 'Value': country_code})
+            if contact_number:
+                user_attributes.append({'Name': 'custom:contact_number', 'Value': contact_number})
+            
+            response = self.client.admin_create_user(
+                UserPoolId=self.user_pool_id,
+                Username=email,
+                UserAttributes=user_attributes,
+                MessageAction='SUPPRESS' # Do not send welcome email
+            )
+            
+            user_sub = next((attr['Value'] for attr in response['User']['Attributes'] if attr['Name'] == 'sub'), None)
+            
+            # Set permanent password so they don't have to change it on first login
+            self.client.admin_set_user_password(
+                UserPoolId=self.user_pool_id,
+                Username=email,
+                Password=password,
+                Permanent=True
+            )
+            
+            logger.info(f"User signed up and confirmed successfully: {email}")
+            
+            return {
+                "message": "User created and verified successfully.",
+                "user_sub": user_sub,
+                "email": email,
+                "first_name": first_name,
+                "last_name": last_name,
+                "country_code": country_code,
+                "mobile_number": contact_number,
+            }
+            
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            logger.error(f"Confirmed signup failed for {email}: {error_code}")
+            
+            if error_code == 'UsernameExistsException':
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="User with this email already exists"
+                )
+            elif error_code in ['InvalidPasswordException', 'InvalidParameterException']:
+                error_message = str(e.response['Error']['Message'])
+                if "password" in error_message.lower():
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="Password must contain at least 8 characters, including uppercase, lowercase, number, and special character"
+                    )
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=error_message
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Signup failed: {str(e)}"
+                )
+
+    def delete_user(self, email: str) -> Dict:
+        """
+        Delete a user from Cognito.
+        """
+        # Check if user exists
+        user_info = self.get_user_info(email)
+        
+        if not user_info:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found."
+            )
+            
+        try:
+            self.client.admin_delete_user(
+                UserPoolId=self.user_pool_id,
+                Username=email
+            )
+            
+            logger.info(f"User deleted successfully: {email}")
+            return {"message": "User deleted successfully."}
+            
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            logger.error(f"Delete user failed for {email}: {error_code}")
+            
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Delete user failed: {str(e)}"
+            )
     
     def verify_email(self, email: str, code: str) -> Dict:
         """Confirm user email with verification code."""
