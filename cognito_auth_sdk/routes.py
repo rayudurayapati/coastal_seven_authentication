@@ -5,7 +5,7 @@ Developers handle their own DB operations using the data returned by these endpo
 """
 import os
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from cognito_auth_sdk.cognito_service import get_cognito_service, CognitoService
 from cognito_auth_sdk.dependencies import get_current_user
@@ -31,7 +31,6 @@ router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 
 @router.post("/login", response_model=SocialLoginResponse)
 async def oauth_login(
-    req: Request,
     request: OAuthLoginRequest,
     cognito: CognitoService = Depends(get_cognito_service),
     verifier=Depends(get_cognito_verifier)
@@ -44,8 +43,7 @@ async def oauth_login(
     - Returning social user: developer fetches existing DB row by user_sub
     """
     try:
-        origin = req.headers.get("origin", "")
-        redirect_uri = origin + os.getenv("OAUTH_REDIRECT_URI", "")
+        redirect_uri = os.getenv("OAUTH_REDIRECT_URI", "")
 
         if not redirect_uri.strip("/"):
             logger.error("OAuth login failed: OAUTH_REDIRECT_URI not configured")
@@ -97,7 +95,6 @@ async def oauth_login(
 
 @router.post("/signup", response_model=SocialLoginResponse)
 async def oauth_signup(
-    req: Request,
     request: OAuthLoginRequest,
     cognito: CognitoService = Depends(get_cognito_service),
     verifier=Depends(get_cognito_verifier)
@@ -106,7 +103,7 @@ async def oauth_signup(
     Social Signup (Google/Facebook) - Same as social login.
     Cognito treats first-time social login as signup automatically.
     """
-    return await oauth_login(req, request, cognito, verifier)
+    return await oauth_login(request, cognito, verifier)
 
 
 # ─────────────────────────────────────────────

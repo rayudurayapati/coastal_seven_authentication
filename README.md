@@ -24,6 +24,20 @@ pip install git+https://johndoe:ghp_xxxxxxxxxxxxxxxxxxxx@github.com/rayudurayapa
 
 ## Setup
 
+### 1. Cognito User Pool Configuration
+You **MUST** configure your AWS Cognito User Pool to accept custom attributes, otherwise native signups will fail.
+
+1. Go to AWS Console → Cognito → User Pools → Your Pool
+2. Go to **Sign-up experience** tab
+3. Under **Custom attributes**, click **Add custom attribute**
+4. Add the following **two** attributes:
+   - Name: `country_code` (Type: String, Mutable: Yes, Min: 0, Max: 2048)
+   - Name: `contact_number` (Type: String, Mutable: Yes, Min: 0, Max: 2048)
+
+*(Note: They will automatically be prefixed with `custom:` in AWS)*
+
+### 2. Environment Variables
+
 Add to your `.env`:
 
 ```env
@@ -46,18 +60,42 @@ from cognito_auth_sdk import auth_router
 app = FastAPI()
 app.include_router(auth_router)
 ```
+## Protecting Your Routes
+
+Use the `get_current_user` dependency to protect your own endpoints. It verifies the JWT and returns `TokenData` (containing `sub` and `email`).
+
+```python
+from fastapi import APIRouter, Depends
+from cognito_auth_sdk.dependencies import get_current_user
+from cognito_auth_sdk.schemas import TokenData
+
+router = APIRouter()
+
+@router.get("/my-protected-route")
+def get_protected_data(token_data: TokenData = Depends(get_current_user)):
+    # The token is perfectly valid if we reach here.
+    user_id = token_data.sub
+    email = token_data.email
+    
+    # -> Lookup user in your own database here using user_id or email
+    
+    return {"message": "You are authenticated!", "user": email}
+```
 
 ## Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/api/v1/auth/native/signup` | Register with email & password. Returns `{ message, email }` |
+| `POST` | `/api/v1/auth/native/signup-confirmed` | Register & auto-verify user (bypasses OTP). Returns full user details. |
 | `POST` | `/api/v1/auth/native/confirm` | Verify email OTP. Returns full user details — **create your DB row here** |
 | `POST` | `/api/v1/auth/native/login` | Login. Returns `{ access_token, refresh_token, user_sub, email }` |
 | `POST` | `/api/v1/auth/native/forgot-password` | Send password reset OTP |
 | `POST` | `/api/v1/auth/native/confirm-forgot-password` | Reset password with OTP |
 | `POST` | `/api/v1/auth/native/resend-code` | Resend email verification OTP |
-| `POST` | `/api/v1/auth/login` | Social login (Google). Returns tokens + user details — **create your DB row here** |
+| `DELETE` | `/api/v1/auth/native/delete-user` | Permanently delete a user from Cognito |
+| `POST` | `/api/v1/auth/login` | Social login (Google/Facebook). Returns tokens + user details — **create your DB row here** |
+| `POST` | `/api/v1/auth/signup` | Social signup (Google/Facebook). Alias for `/login` (Cognito handles this). |
 | `GET` | `/api/v1/auth/validate-token` | Validate `access_token`. Returns `{ valid, user_sub, email }` |
 
 ## Social Login (Google)
